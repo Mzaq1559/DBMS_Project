@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RCMS — Rental Car Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:       #0d0f12;
+      --surface:  #151820;
+      --border:   #1e2330;
+      --accent:   #00d4aa;
+      --accent2:  #0095ff;
+      --danger:   #ff4d6d;
+      --warn:     #ffb347;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --mono:     'IBM Plex Mono', monospace;
+      --sans:     'IBM Plex Sans', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: .85rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      color: var(--accent);
+    }
+
+    .logo span { color: var(--muted); }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: inline-block;
+      margin-right: .5rem;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50%      { opacity: .3; }
+    }
+
+    /* ── Tabs ── */
+    nav {
+      display: flex;
+      gap: 0;
+      padding: 1.5rem 2rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      font-family: var(--mono);
+      font-size: .78rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: .6rem 1.4rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-bottom: none;
+      color: var(--muted);
+      background: transparent;
+      transition: color .2s;
+      position: relative;
+      bottom: -1px;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab.active {
+      color: var(--accent);
+      border-color: var(--border);
+      background: var(--surface);
+      border-bottom-color: var(--surface);
+    }
+
+    /* ── Main ── */
+    main { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Section title ── */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-head h2 {
+      font-family: var(--mono);
+      font-size: .9rem;
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: var(--text);
+    }
+
+    /* ── Cards grid ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1.2rem;
+      transition: border-color .2s;
+    }
+
+    .card:hover { border-color: #2a3045; }
+
+    .card-title {
+      font-family: var(--mono);
+      font-size: .85rem;
+      font-weight: 600;
+      margin-bottom: .5rem;
+    }
+
+    .card-meta {
+      font-size: .78rem;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: .68rem;
+      padding: .2rem .55rem;
+      border-radius: 2px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      margin-top: .6rem;
+    }
+
+    .badge-green  { background: #00d4aa18; color: var(--accent);  border: 1px solid #00d4aa33; }
+    .badge-red    { background: #ff4d6d18; color: var(--danger);  border: 1px solid #ff4d6d33; }
+    .badge-yellow { background: #ffb34718; color: var(--warn);    border: 1px solid #ffb34733; }
+    .badge-blue   { background: #0095ff18; color: var(--accent2); border: 1px solid #0095ff33; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+    }
+
+    th {
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: left;
+      padding: .7rem 1rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: .75rem 1rem;
+      border-bottom: 1px solid #151820;
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    tr:hover td { background: #151820; }
+
+    /* ── Buttons ── */
+    .btn {
+      font-family: var(--mono);
+      font-size: .75rem;
+      letter-spacing: .05em;
+      padding: .5rem 1rem;
+      cursor: pointer;
+      border: 1px solid;
+      background: transparent;
+      transition: background .15s, color .15s;
+    }
+
+    .btn-primary { color: var(--accent);  border-color: var(--accent);  }
+    .btn-primary:hover { background: var(--accent); color: var(--bg); }
+
+    .btn-danger  { color: var(--danger);  border-color: var(--danger);  }
+    .btn-danger:hover  { background: var(--danger);  color: #fff; }
+
+    .btn-blue    { color: var(--accent2); border-color: var(--accent2); }
+    .btn-blue:hover    { background: var(--accent2); color: #fff; }
+
+    .btn-sm { padding: .3rem .7rem; font-size: .7rem; }
+
+    /* ── Form ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: .8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .form-grid label {
+      font-family: var(--mono);
+      font-size: .7rem;
+      letter-spacing: .06em;
+      color: var(--muted);
+      display: block;
+      margin-bottom: .35rem;
+      text-transform: uppercase;
+    }
+
+    .form-grid input,
+    .form-grid select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: .82rem;
+      padding: .55rem .8rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .form-grid input:focus,
+    .form-grid select:focus { border-color: var(--accent); }
+
+    .form-grid select option { background: var(--bg); }
+
+    .form-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: .7rem;
+      align-items: center;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      font-family: var(--mono);
+      font-size: .78rem;
+      padding: .8rem 1.2rem;
+      border-left: 3px solid var(--accent);
+      background: var(--surface);
+      color: var(--text);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .3s, transform .3s;
+      pointer-events: none;
+      z-index: 100;
+      max-width: 320px;
+    }
+
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { border-color: var(--danger); }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 3rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: .82rem;
+    }
+
+    /* ── Loading ── */
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: .78rem;
+      letter-spacing: .06em;
+    }
+
+    .rate {
+      font-family: var(--mono);
+      font-size: .78rem;
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">RCMS <span>// rental car management</span></div>
+  <div style="font-size:.75rem; color:var(--muted); font-family:var(--mono)">
+    <span class="status-dot"></span>connected
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" onclick="switchTab('vehicles', this)">Vehicles</button>
+  <button class="tab" onclick="switchTab('reservations', this)">Reservations</button>
+  <button class="tab" onclick="switchTab('invoices', this)">Invoices</button>
+</nav>
+
+<main>
+
+  <!-- ── VEHICLES ── -->
+  <div id="vehicles" class="panel active">
+    <div class="section-head">
+      <h2>Fleet Overview</h2>
+      <div style="display:flex;gap:.6rem">
+        <button class="btn btn-primary btn-sm" onclick="loadVehicles()">↺ Refresh</button>
+        <select id="statusFilter" onchange="loadVehicles()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:.72rem;padding:.3rem .6rem;">
+          <option value="">All</option>
+          <option value="available">Available</option>
+          <option value="rented">Rented</option>
+          <option value="maintenance">Maintenance</option>
+        </select>
+      </div>
+    </div>
+    <div id="vehicleGrid" class="grid"><div class="loading">loading fleet...</div></div>
+  </div>
+
+  <!-- ── RESERVATIONS ── -->
+  <div id="reservations" class="panel">
+    <div class="section-head"><h2>New Reservation</h2></div>
+
+    <div class="form-grid">
+      <div>
+        <label>Customer</label>
+        <select id="res_customer"></select>
+      </div>
+      <div>
+        <label>Vehicle</label>
+        <select id="res_vehicle"></select>
+      </div>
+      <div>
+        <label>Start Date</label>
+        <input type="date" id="res_start"/>
+      </div>
+      <div>
+        <label>End Date</label>
+        <input type="date" id="res_end"/>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="createReservation()">Book Vehicle</button>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>All Reservations</h2>
+      <button class="btn btn-primary btn-sm" onclick="loadReservations()">↺ Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Customer</th><th>Vehicle</th>
+            <th>Start</th><th>End</th><th>Status</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="reservationBody"><tr><td colspan="7" class="loading">loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── INVOICES ── -->
+  <div id="invoices" class="panel">
+    <div class="section-head"><h2>Invoices</h2>
+      <button class="btn btn-primary btn-sm" onclick="loadInvoices()">↺ Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Customer</th><th>Vehicle</th>
+            <th>Subtotal</th><th>Tax</th><th>Total</th><th>Status</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="invoiceBody"><tr><td colspan="8" class="loading">loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+  const API = "http://localhost:8000";
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  async function req(method, path, body = null) {
+    const opts = { method, headers: { "Content-Type": "application/json" } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API + path, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Request failed");
+    return data;
+  }
+
+  function toast(msg, error = false) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className = "show" + (error ? " error" : "");
+    setTimeout(() => el.className = "", 3000);
+  }
+
+  function statusBadge(s) {
+    const map = {
+      available:   "badge-green",
+      rented:      "badge-red",
+      maintenance: "badge-yellow",
+      active:      "badge-blue",
+      completed:   "badge-green",
+      cancelled:   "badge-red",
+    };
+    return `<span class="badge ${map[s] || ''}">${s}</span>`;
+  }
+
+  function fmt(n) {
+    return "PKR " + Number(n).toLocaleString("en-PK", { minimumFractionDigits: 0 });
+  }
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+
+  function switchTab(name, el) {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    el.classList.add("active");
+    document.getElementById(name).classList.add("active");
+    if (name === "vehicles")     loadVehicles();
+    if (name === "reservations") { loadReservations(); populateSelects(); }
+    if (name === "invoices")     loadInvoices();
+  }
+
+  // ── Vehicles ───────────────────────────────────────────────────────────────
+
+  async function loadVehicles() {
+    const status = document.getElementById("statusFilter").value;
+    const grid = document.getElementById("vehicleGrid");
+    grid.innerHTML = '<div class="loading">loading fleet...</div>';
+    try {
+      const vehicles = await req("GET", "/vehicles" + (status ? `?status=${status}` : ""));
+      if (!vehicles.length) { grid.innerHTML = '<div class="empty">no vehicles found</div>'; return; }
+      grid.innerHTML = vehicles.map(v => `
+        <div class="card">
+          <div class="card-title">${v.make} ${v.model} <span style="color:var(--muted);font-weight:400">${v.year}</span></div>
+          <div class="card-meta">
+            VIN: ${v.vin}<br>
+            Category: ${v.category}<br>
+            Location: ${v.location_name}<br>
+            <span class="rate">${fmt(v.daily_rate)} / day</span>
+          </div>
+          ${statusBadge(v.status)}
+        </div>
+      `).join("");
+    } catch(e) { grid.innerHTML = `<div class="empty">${e.message}</div>`; }
+  }
+
+  // ── Populate selects ───────────────────────────────────────────────────────
+
+  async function populateSelects() {
+    try {
+      const [customers, vehicles] = await Promise.all([
+        req("GET", "/customers"),
+        req("GET", "/vehicles?status=available")
+      ]);
+
+      const cs = document.getElementById("res_customer");
+      cs.innerHTML = customers.map(c =>
+        `<option value="${c.customer_id}">${c.full_name}</option>`
+      ).join("");
+
+      const vs = document.getElementById("res_vehicle");
+      vs.innerHTML = vehicles.map(v =>
+        `<option value="${v.vehicle_id}">${v.make} ${v.model} (${v.category}) — ${fmt(v.daily_rate)}/day</option>`
+      ).join("");
+    } catch(e) { toast(e.message, true); }
+  }
+
+  // ── Reservations ───────────────────────────────────────────────────────────
+
+  async function loadReservations() {
+    const tbody = document.getElementById("reservationBody");
+    tbody.innerHTML = '<tr><td colspan="7" class="loading">loading...</td></tr>';
+    try {
+      const rows = await req("GET", "/reservations");
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">no reservations yet</td></tr>'; return; }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td style="font-family:var(--mono);color:var(--muted)">#${r.reservation_id}</td>
+          <td>${r.customer_name}</td>
+          <td>${r.vehicle_name}</td>
+          <td style="font-family:var(--mono)">${r.start_date}</td>
+          <td style="font-family:var(--mono)">${r.end_date}</td>
+          <td>${statusBadge(r.status)}</td>
+          <td>
+            ${r.status === 'active'
+              ? `<button class="btn btn-danger btn-sm" onclick="cancelReservation(${r.reservation_id})">Cancel</button>`
+              : '—'}
+          </td>
+        </tr>
+      `).join("");
+    } catch(e) { tbody.innerHTML = `<tr><td colspan="7" class="empty">${e.message}</td></tr>`; }
+  }
+
+  async function createReservation() {
+    const customer_id = parseInt(document.getElementById("res_customer").value);
+    const vehicle_id  = parseInt(document.getElementById("res_vehicle").value);
+    const start_date  = document.getElementById("res_start").value;
+    const end_date    = document.getElementById("res_end").value;
+    if (!start_date || !end_date) { toast("pick start and end dates", true); return; }
+    try {
+      await req("POST", "/reservations", { customer_id, vehicle_id, start_date, end_date });
+      toast("reservation created ✓");
+      loadReservations();
+      populateSelects();
+    } catch(e) { toast(e.message, true); }
+  }
+
+  async function cancelReservation(id) {
+    if (!confirm("Cancel this reservation?")) return;
+    try {
+      await req("PATCH", `/reservations/${id}/cancel`);
+      toast("reservation cancelled");
+      loadReservations();
+    } catch(e) { toast(e.message, true); }
+  }
+
+  // ── Invoices ───────────────────────────────────────────────────────────────
+
+  async function loadInvoices() {
+    const tbody = document.getElementById("invoiceBody");
+    tbody.innerHTML = '<tr><td colspan="8" class="loading">loading...</td></tr>';
+    try {
+      const rows = await req("GET", "/invoices");
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">no invoices yet</td></tr>'; return; }
+      tbody.innerHTML = rows.map(i => `
+        <tr>
+          <td style="font-family:var(--mono);color:var(--muted)">#${i.invoice_id}</td>
+          <td>${i.customer_name}</td>
+          <td>${i.vehicle_name}</td>
+          <td style="font-family:var(--mono)">${fmt(i.subtotal)}</td>
+          <td style="font-family:var(--mono)">${fmt(i.tax)}</td>
+          <td style="font-family:var(--mono);color:var(--accent)">${fmt(i.total)}</td>
+          <td>${i.paid ? statusBadge('completed') : statusBadge('active')}</td>
+          <td>
+            ${!i.paid
+              ? `<button class="btn btn-blue btn-sm" onclick="payInvoice(${i.invoice_id})">Mark Paid</button>`
+              : '—'}
+          </td>
+        </tr>
+      `).join("");
+    } catch(e) { tbody.innerHTML = `<tr><td colspan="8" class="empty">${e.message}</td></tr>`; }
+  }
+
+  async function payInvoice(id) {
+    try {
+      await req("PATCH", `/invoices/${id}/pay`);
+      toast("invoice marked as paid ✓");
+      loadInvoices();
+    } catch(e) { toast(e.message, true); }
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  loadVehicles();
+</script>
+</body>
+</html>
