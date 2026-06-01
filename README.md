@@ -2,11 +2,6 @@
 
 A simple web app to manage a car rental business — built as a DBMS Lab project.
 
-**Team:**
-- Muhammad Zulqarnain Abdullah (24-CS-19)
-- Muhammad Ali (24-CS-129)
-- Muhammad Bilal (24-CS-64)
-
 ---
 
 ## What Does This App Do?
