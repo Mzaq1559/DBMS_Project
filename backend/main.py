@@ -27,197 +27,243 @@ class ReservationIn(BaseModel):
     start_date: date
     end_date: date
 
+# ── Helper: row → dict ─────────────────────────────────────────────────────────
+
+def row_to_dict(cursor, row):
+    """Convert a pyodbc Row to a plain dict using cursor.description."""
+    if row is None:
+        return None
+    columns = [col[0] for col in cursor.description]
+    return dict(zip(columns, row))
+
+def rows_to_list(cursor, rows):
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in rows]
+
 # ── Locations ──────────────────────────────────────────────────────────────────
 
 @app.get("/locations")
 def get_locations():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM locations ORDER BY location_id")
-            return cur.fetchall()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM locations ORDER BY location_id")
+        return rows_to_list(cur, cur.fetchall())
+    finally:
+        conn.close()
 
 # ── Vehicles ───────────────────────────────────────────────────────────────────
 
 @app.get("/vehicles")
 def get_vehicles(status: str = None):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if status:
-                cur.execute("""
-                    SELECT v.*, l.name AS location_name
-                    FROM vehicles v
-                    JOIN locations l USING (location_id)
-                    WHERE v.status = %s
-                    ORDER BY v.vehicle_id
-                """, (status,))
-            else:
-                cur.execute("""
-                    SELECT v.*, l.name AS location_name
-                    FROM vehicles v
-                    JOIN locations l USING (location_id)
-                    ORDER BY v.vehicle_id
-                """)
-            return cur.fetchall()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        if status:
+            cur.execute("""
+                SELECT v.*, l.name AS location_name
+                FROM vehicles v
+                JOIN locations l ON l.location_id = v.location_id
+                WHERE v.status = ?
+                ORDER BY v.vehicle_id
+            """, (status,))
+        else:
+            cur.execute("""
+                SELECT v.*, l.name AS location_name
+                FROM vehicles v
+                JOIN locations l ON l.location_id = v.location_id
+                ORDER BY v.vehicle_id
+            """)
+        return rows_to_list(cur, cur.fetchall())
+    finally:
+        conn.close()
 
 @app.patch("/vehicles/{vehicle_id}/status")
 def update_vehicle_status(vehicle_id: int, status: str):
     valid = ("available", "rented", "maintenance")
     if status not in valid:
         raise HTTPException(400, f"status must be one of {valid}")
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE vehicles SET status = %s WHERE vehicle_id = %s RETURNING *",
-                (status, vehicle_id)
-            )
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Vehicle not found")
-            conn.commit()
-            return row
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE vehicles SET status = ? WHERE vehicle_id = ?",
+            (status, vehicle_id)
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Vehicle not found")
+        conn.commit()
+        cur.execute("SELECT * FROM vehicles WHERE vehicle_id = ?", (vehicle_id,))
+        return row_to_dict(cur, cur.fetchone())
+    finally:
+        conn.close()
 
 # ── Customers ──────────────────────────────────────────────────────────────────
 
 @app.get("/customers")
 def get_customers():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM customers ORDER BY customer_id")
-            return cur.fetchall()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM customers ORDER BY customer_id")
+        return rows_to_list(cur, cur.fetchall())
+    finally:
+        conn.close()
 
 @app.post("/customers", status_code=201)
 def create_customer(body: CustomerIn):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO customers (full_name, email, phone, license_no)
-                VALUES (%s, %s, %s, %s) RETURNING *
-            """, (body.full_name, body.email, body.phone, body.license_no))
-            row = cur.fetchone()
-            conn.commit()
-            return row
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO customers (full_name, email, phone, license_no)
+            VALUES (?, ?, ?, ?)
+        """, (body.full_name, body.email, body.phone, body.license_no))
+        conn.commit()
+        cur.execute("SELECT * FROM customers WHERE customer_id = SCOPE_IDENTITY()")
+        return row_to_dict(cur, cur.fetchone())
+    finally:
+        conn.close()
 
 # ── Reservations ───────────────────────────────────────────────────────────────
 
 @app.get("/reservations")
 def get_reservations():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    r.*,
-                    c.full_name  AS customer_name,
-                    v.make || ' ' || v.model AS vehicle_name,
-                    v.daily_rate
-                FROM reservations r
-                JOIN customers c USING (customer_id)
-                JOIN vehicles  v USING (vehicle_id)
-                ORDER BY r.created_at DESC
-            """)
-            return cur.fetchall()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                r.*,
+                c.full_name AS customer_name,
+                v.make + ' ' + v.model AS vehicle_name,
+                v.daily_rate
+            FROM reservations r
+            JOIN customers c ON c.customer_id = r.customer_id
+            JOIN vehicles  v ON v.vehicle_id  = r.vehicle_id
+            ORDER BY r.created_at DESC
+        """)
+        return rows_to_list(cur, cur.fetchall())
+    finally:
+        conn.close()
 
 @app.post("/reservations", status_code=201)
 def create_reservation(body: ReservationIn):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
 
-            # check vehicle is available
-            cur.execute("SELECT * FROM vehicles WHERE vehicle_id = %s", (body.vehicle_id,))
-            vehicle = cur.fetchone()
-            if not vehicle:
-                raise HTTPException(404, "Vehicle not found")
-            if vehicle["status"] != "available":
-                raise HTTPException(400, "Vehicle is not available")
+        # check vehicle exists and is available
+        cur.execute("SELECT * FROM vehicles WHERE vehicle_id = ?", (body.vehicle_id,))
+        vehicle = row_to_dict(cur, cur.fetchone())
+        if not vehicle:
+            raise HTTPException(404, "Vehicle not found")
+        if vehicle["status"] != "available":
+            raise HTTPException(400, "Vehicle is not available")
 
-            # check no overlapping reservation
-            cur.execute("""
-                SELECT 1 FROM reservations
-                WHERE vehicle_id = %s
-                  AND status = 'active'
-                  AND start_date < %s
-                  AND end_date   > %s
-            """, (body.vehicle_id, body.end_date, body.start_date))
-            if cur.fetchone():
-                raise HTTPException(400, "Vehicle already booked for those dates")
+        # check no overlapping reservation
+        cur.execute("""
+            SELECT 1 FROM reservations
+            WHERE vehicle_id = ?
+              AND status = 'active'
+              AND start_date < ?
+              AND end_date   > ?
+        """, (body.vehicle_id, body.end_date, body.start_date))
+        if cur.fetchone():
+            raise HTTPException(400, "Vehicle already booked for those dates")
 
-            # create reservation
-            cur.execute("""
-                INSERT INTO reservations (customer_id, vehicle_id, start_date, end_date)
-                VALUES (%s, %s, %s, %s) RETURNING *
-            """, (body.customer_id, body.vehicle_id, body.start_date, body.end_date))
-            reservation = cur.fetchone()
+        # create reservation
+        cur.execute("""
+            INSERT INTO reservations (customer_id, vehicle_id, start_date, end_date)
+            VALUES (?, ?, ?, ?)
+        """, (body.customer_id, body.vehicle_id, body.start_date, body.end_date))
+        conn.commit()
 
-            # auto-generate invoice
-            days = (body.end_date - body.start_date).days
-            subtotal = days * float(vehicle["daily_rate"])
-            tax      = round(subtotal * 0.18, 2)
-            total    = round(subtotal + tax, 2)
+        cur.execute("SELECT * FROM reservations WHERE reservation_id = SCOPE_IDENTITY()")
+        reservation = row_to_dict(cur, cur.fetchone())
 
-            cur.execute("""
-                INSERT INTO invoices (reservation_id, subtotal, tax, total)
-                VALUES (%s, %s, %s, %s)
-            """, (reservation["reservation_id"], subtotal, tax, total))
+        # auto-generate invoice
+        days     = (body.end_date - body.start_date).days
+        subtotal = days * float(vehicle["daily_rate"])
+        tax      = round(subtotal * 0.18, 2)
+        total    = round(subtotal + tax, 2)
 
-            # mark vehicle as rented
-            cur.execute(
-                "UPDATE vehicles SET status = 'rented' WHERE vehicle_id = %s",
-                (body.vehicle_id,)
-            )
+        cur.execute("""
+            INSERT INTO invoices (reservation_id, subtotal, tax, total)
+            VALUES (?, ?, ?, ?)
+        """, (reservation["reservation_id"], subtotal, tax, total))
 
-            conn.commit()
-            return reservation
+        # mark vehicle as rented
+        cur.execute(
+            "UPDATE vehicles SET status = 'rented' WHERE vehicle_id = ?",
+            (body.vehicle_id,)
+        )
+
+        conn.commit()
+        return reservation
+    finally:
+        conn.close()
 
 @app.patch("/reservations/{reservation_id}/cancel")
 def cancel_reservation(reservation_id: int):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM reservations WHERE reservation_id = %s", (reservation_id,))
-            res = cur.fetchone()
-            if not res:
-                raise HTTPException(404, "Reservation not found")
-            if res["status"] != "active":
-                raise HTTPException(400, "Only active reservations can be cancelled")
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM reservations WHERE reservation_id = ?", (reservation_id,))
+        res = row_to_dict(cur, cur.fetchone())
+        if not res:
+            raise HTTPException(404, "Reservation not found")
+        if res["status"] != "active":
+            raise HTTPException(400, "Only active reservations can be cancelled")
 
-            cur.execute(
-                "UPDATE reservations SET status = 'cancelled' WHERE reservation_id = %s",
-                (reservation_id,)
-            )
-            cur.execute(
-                "UPDATE vehicles SET status = 'available' WHERE vehicle_id = %s",
-                (res["vehicle_id"],)
-            )
-            conn.commit()
-            return {"message": "Reservation cancelled"}
+        cur.execute(
+            "UPDATE reservations SET status = 'cancelled' WHERE reservation_id = ?",
+            (reservation_id,)
+        )
+        cur.execute(
+            "UPDATE vehicles SET status = 'available' WHERE vehicle_id = ?",
+            (res["vehicle_id"],)
+        )
+        conn.commit()
+        return {"message": "Reservation cancelled"}
+    finally:
+        conn.close()
 
 # ── Invoices ───────────────────────────────────────────────────────────────────
 
 @app.get("/invoices")
 def get_invoices():
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    i.*,
-                    c.full_name AS customer_name,
-                    v.make || ' ' || v.model AS vehicle_name
-                FROM invoices i
-                JOIN reservations r USING (reservation_id)
-                JOIN customers    c USING (customer_id)
-                JOIN vehicles     v USING (vehicle_id)
-                ORDER BY i.issued_at DESC
-            """)
-            return cur.fetchall()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                i.*,
+                c.full_name AS customer_name,
+                v.make + ' ' + v.model AS vehicle_name
+            FROM invoices i
+            JOIN reservations r ON r.reservation_id = i.reservation_id
+            JOIN customers    c ON c.customer_id    = r.customer_id
+            JOIN vehicles     v ON v.vehicle_id     = r.vehicle_id
+            ORDER BY i.issued_at DESC
+        """)
+        return rows_to_list(cur, cur.fetchall())
+    finally:
+        conn.close()
 
 @app.patch("/invoices/{invoice_id}/pay")
 def mark_invoice_paid(invoice_id: int):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE invoices SET paid = TRUE WHERE invoice_id = %s RETURNING *",
-                (invoice_id,)
-            )
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(404, "Invoice not found")
-            conn.commit()
-            return row
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE invoices SET paid = 1 WHERE invoice_id = ?",
+            (invoice_id,)
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Invoice not found")
+        conn.commit()
+        cur.execute("SELECT * FROM invoices WHERE invoice_id = ?", (invoice_id,))
+        return row_to_dict(cur, cur.fetchone())
+    finally:
+        conn.close()
