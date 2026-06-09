@@ -115,12 +115,22 @@ def create_customer(body: CustomerIn):
     conn = get_conn()
     try:
         cur = conn.cursor()
+
+        # Insert and capture new ID before committing
         cur.execute("""
             INSERT INTO customers (full_name, email, phone, license_no)
+            OUTPUT INSERTED.customer_id
             VALUES (?, ?, ?, ?)
         """, (body.full_name, body.email, body.phone, body.license_no))
+
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(500, "Failed to create customer")
+        new_id = row[0]
+
         conn.commit()
-        cur.execute("SELECT * FROM customers WHERE customer_id = SCOPE_IDENTITY()")
+
+        cur.execute("SELECT * FROM customers WHERE customer_id = ?", (new_id,))
         return row_to_dict(cur, cur.fetchone())
     finally:
         conn.close()
@@ -153,7 +163,7 @@ def create_reservation(body: ReservationIn):
     try:
         cur = conn.cursor()
 
-        # check vehicle exists and is available
+        # Check vehicle exists and is available
         cur.execute("SELECT * FROM vehicles WHERE vehicle_id = ?", (body.vehicle_id,))
         vehicle = row_to_dict(cur, cur.fetchone())
         if not vehicle:
@@ -161,7 +171,7 @@ def create_reservation(body: ReservationIn):
         if vehicle["status"] != "available":
             raise HTTPException(400, "Vehicle is not available")
 
-        # check no overlapping reservation
+        # Check no overlapping reservation
         cur.execute("""
             SELECT 1 FROM reservations
             WHERE vehicle_id = ?
@@ -172,35 +182,45 @@ def create_reservation(body: ReservationIn):
         if cur.fetchone():
             raise HTTPException(400, "Vehicle already booked for those dates")
 
-        # create reservation
+        # Validate date range
+        if body.end_date <= body.start_date:
+            raise HTTPException(400, "end_date must be after start_date")
+
+        # Insert and capture new reservation ID before committing
         cur.execute("""
             INSERT INTO reservations (customer_id, vehicle_id, start_date, end_date)
+            OUTPUT INSERTED.reservation_id
             VALUES (?, ?, ?, ?)
         """, (body.customer_id, body.vehicle_id, body.start_date, body.end_date))
-        conn.commit()
 
-        cur.execute("SELECT * FROM reservations WHERE reservation_id = SCOPE_IDENTITY()")
-        reservation = row_to_dict(cur, cur.fetchone())
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(500, "Failed to create reservation")
+        new_id = row[0]
 
-        # auto-generate invoice
+        # Auto-generate invoice
         days     = (body.end_date - body.start_date).days
-        subtotal = days * float(vehicle["daily_rate"])
+        subtotal = round(days * float(vehicle["daily_rate"]), 2)
         tax      = round(subtotal * 0.18, 2)
         total    = round(subtotal + tax, 2)
 
         cur.execute("""
             INSERT INTO invoices (reservation_id, subtotal, tax, total)
             VALUES (?, ?, ?, ?)
-        """, (reservation["reservation_id"], subtotal, tax, total))
+        """, (new_id, subtotal, tax, total))
 
-        # mark vehicle as rented
+        # Mark vehicle as rented
         cur.execute(
             "UPDATE vehicles SET status = 'rented' WHERE vehicle_id = ?",
             (body.vehicle_id,)
         )
 
         conn.commit()
-        return reservation
+
+        # Fetch and return the full reservation row
+        cur.execute("SELECT * FROM reservations WHERE reservation_id = ?", (new_id,))
+        return row_to_dict(cur, cur.fetchone())
+
     finally:
         conn.close()
 
